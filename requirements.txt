@@ -1,4 +1,4 @@
 flask
 flask-cors
 requests
-pyquotex
+git+https://github.com/cleitonleonel/pyquotex.git
