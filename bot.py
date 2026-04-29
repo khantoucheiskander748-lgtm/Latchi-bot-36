@@ -23,6 +23,7 @@ async def _patched_get_server_time(self):
 
 _qx_stable.Quotex.get_server_time = _patched_get_server_time
 
+# ── قراءة المتغيرات من Environment ──
 def _env(*names, default=""):
     for n in names:
         v = (os.environ.get(n) or "").strip()
@@ -40,6 +41,7 @@ TG_CHANNEL = _env("TELEGRAM_CHANNEL")
 ASSETS      = ["NZDCHF_otc", "USDINR_otc", "USDBDT_otc", "USDARS_otc", "USDPKR_otc"]
 BASE_AMOUNT = 1.0
 
+# ── إرسال رسالة إلى تيليجرام ──
 def send_telegram(text):
     if not TG_TOKEN or not TG_CHANNEL:
         print("TG WARNING: TOKEN or CHANNEL not set")
@@ -54,6 +56,7 @@ def send_telegram(text):
     except Exception as e:
         print("TG ERROR:", e)
 
+# ── حالة البوت ──
 class BotState:
     def __init__(self):
         self.running = False
@@ -86,13 +89,13 @@ state = BotState()
 _loop = None
 _task = None
 
+# ── تحميل session.json ──
 def _load_session(client):
-    """تحميل الـ cookies والـ token مباشرة بدون تسجيل دخول"""
     try:
         session_dir = os.path.join(os.path.expanduser("~"), ".pyquotex")
         os.makedirs(session_dir, exist_ok=True)
         session_file = os.path.join(session_dir, f"{EMAIL}.json")
-        
+
         import json
         session_data = {
             EMAIL: {
@@ -109,6 +112,7 @@ def _load_session(client):
         print("SESSION ERROR:", e)
         return False
 
+# ── تحليل الاتجاه ──
 async def decide_direction(client, asset):
     try:
         call_score = 0
@@ -123,17 +127,13 @@ async def decide_direction(client, asset):
             if downs >= 3: put_score  += 3
             last_close = candles[-1]["close"]
 
-        rsi = await client.calculate_indicator(
-            asset, "RSI", {"period": 14}, history_size=3600, timeframe=60
-        )
+        rsi = await client.calculate_indicator(asset, "RSI", {"period": 14}, history_size=3600, timeframe=60)
         if rsi and "current" in rsi and rsi["current"]:
             rsi_val = float(rsi["current"])
             if rsi_val < 35:   call_score += 2
             elif rsi_val > 65: put_score  += 2
 
-        ema = await client.calculate_indicator(
-            asset, "EMA", {"period": 20}, history_size=3600, timeframe=60
-        )
+        ema = await client.calculate_indicator(asset, "EMA", {"period": 20}, history_size=3600, timeframe=60)
         if ema and "current" in ema and ema["current"]:
             ema_val = float(ema["current"])
             if last_close > ema_val:   call_score += 2
@@ -145,14 +145,11 @@ async def decide_direction(client, asset):
     except Exception:
         return random.choice(["call", "put"])
 
+# ── الحلقة الرئيسية ──
 async def bot_loop():
     global state
 
-    send_telegram(
-        "⏳ <b>LATCHI DZ BOT</b>\n"
-        "🔄 جارٍ الاتصال بمنصة Quotex...\n"
-        "يرجى الانتظار..."
-    )
+    send_telegram("⏳ <b>LATCHI DZ BOT</b>\n🔄 جارٍ الاتصال بمنصة Quotex...\nيرجى الانتظار...")
 
     client = Quotex(email=EMAIL, password="", lang="en")
     client.set_account_mode("PRACTICE")
@@ -163,11 +160,7 @@ async def bot_loop():
     if not connected:
         state.status = f"فشل الاتصال: {reason}"
         state.running = False
-        send_telegram(
-            f"❌ <b>فشل الاتصال بمنصة Quotex</b>\n"
-            f"السبب: {reason}\n"
-            f"يرجى تجديد الـ cookies"
-        )
+        send_telegram(f"❌ <b>فشل الاتصال بمنصة Quotex</b>\nالسبب: {reason}\nيرجى تجديد الـ cookies")
         return
 
     await client.change_account("PRACTICE")
@@ -176,11 +169,8 @@ async def bot_loop():
     state.status  = "يعمل الآن"
 
     send_telegram(
-        f"✅ <b>تم الاتصال بمنصة Quotex بنجاح!</b>\n\n"
-        f"🚀 <b>LATCHI DZ BOT</b> بدأ التشغيل\n"
-        f"💰 الرصيد التجريبي: <b>${state.balance:.2f}</b>\n"
-        f"📊 الوضع: تجريبي (PRACTICE)\n\n"
-        f"📡 سيبدأ إرسال الإشارات الآن..."
+        f"✅ <b>تم الاتصال بمنصة Quotex بنجاح!</b>\n\n🚀 <b>LATCHI DZ BOT</b> بدأ التشغيل\n"
+        f"💰 الرصيد التجريبي: <b>${state.balance:.2f}</b>\n📊 الوضع: تجريبي (PRACTICE)\n\n📡 سيبدأ إرسال الإشارات الآن..."
     )
 
     while state.running:
@@ -199,23 +189,14 @@ async def bot_loop():
 
             direction_text = "CALL 🔼" if direction == "call" else "PUT 🔽"
             send_telegram(
-                f"📊 <b>إشارة جديدة — LATCHI DZ VIP</b>\n\n"
-                f"🎯 الأصل: <b>{asset.upper()}</b>\n"
-                f"📈 الاتجاه: <b>{direction_text}</b>\n"
-                f"⏱ التوقيت: <b>M1</b> | {next_minute.strftime('%H:%M')}\n"
-                f"💵 المبلغ: <b>${BASE_AMOUNT}</b>\n\n"
-                f"#QUOTEX #LATCHIDZ"
+                f"📊 <b>إشارة جديدة — LATCHI DZ VIP</b>\n\n🎯 الأصل: <b>{asset.upper()}</b>\n"
+                f"📈 الاتجاه: <b>{direction_text}</b>\n⏱ التوقيت: <b>M1</b> | {next_minute.strftime('%H:%M')}\n"
+                f"💵 المبلغ: <b>${BASE_AMOUNT}</b>\n\n#QUOTEX #LATCHIDZ"
             )
 
             success, order_info = await client.buy(BASE_AMOUNT, asset, direction, 60)
 
-            signal = {
-                "asset":     asset.upper(),
-                "direction": direction,
-                "time":      signal_time,
-                "result":    "pending",
-                "profit":    0,
-            }
+            signal = {"asset": asset.upper(), "direction": direction, "time": signal_time, "result": "pending", "profit": 0}
             state.signals.insert(0, signal)
             state.trades += 1
 
@@ -231,6 +212,7 @@ async def bot_loop():
             signal["result"] = result_status
             signal["profit"] = round(float(profit), 2) if profit else 0
 
+            new_balance    = await client.get_balance()
             new_balance    = await client.get_balance()
             state.balance  = float(new_balance)
 
