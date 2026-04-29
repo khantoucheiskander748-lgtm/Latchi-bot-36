@@ -31,7 +31,9 @@ def _env(*names, default=""):
     return default
 
 EMAIL      = _env("QUOTEX_EMAIL")
-PASSWORD   = _env("QUOTEX_PASSWORD")
+COOKIES    = _env("QUOTEX_COOKIES")
+TOKEN      = _env("QUOTEX_TOKEN")
+USER_AGENT = _env("QUOTEX_USER_AGENT")
 TG_TOKEN   = _env("TELEGRAM_BOT_TOKEN")
 TG_CHANNEL = _env("TELEGRAM_CHANNEL")
 
@@ -40,13 +42,15 @@ BASE_AMOUNT = 1.0
 
 def send_telegram(text):
     if not TG_TOKEN or not TG_CHANNEL:
+        print("TG WARNING: TOKEN or CHANNEL not set")
         return
     try:
-        requests.post(
+        r = requests.post(
             f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
             json={"chat_id": TG_CHANNEL, "text": text, "parse_mode": "HTML"},
             timeout=10,
         )
+        print("TG STATUS:", r.status_code, r.text[:200])
     except Exception as e:
         print("TG ERROR:", e)
 
@@ -82,6 +86,29 @@ state = BotState()
 _loop = None
 _task = None
 
+def _load_session(client):
+    """تحميل الـ cookies والـ token مباشرة بدون تسجيل دخول"""
+    try:
+        session_dir = os.path.join(os.path.expanduser("~"), ".pyquotex")
+        os.makedirs(session_dir, exist_ok=True)
+        session_file = os.path.join(session_dir, f"{EMAIL}.json")
+        
+        import json
+        session_data = {
+            EMAIL: {
+                "cookies": COOKIES,
+                "token": TOKEN,
+                "user_agent": USER_AGENT
+            }
+        }
+        with open(session_file, "w") as f:
+            json.dump(session_data, f)
+        print("✅ Session file loaded successfully")
+        return True
+    except Exception as e:
+        print("SESSION ERROR:", e)
+        return False
+
 async def decide_direction(client, asset):
     try:
         call_score = 0
@@ -114,39 +141,53 @@ async def decide_direction(client, asset):
 
         if call_score > put_score:   return "call"
         elif put_score > call_score: return "put"
-        else:                        return random.choice(["call", "put"])
+        else: return random.choice(["call", "put"])
     except Exception:
         return random.choice(["call", "put"])
 
 async def bot_loop():
     global state
 
-    client = Quotex(email=EMAIL, password=PASSWORD, lang="en")
+    send_telegram(
+        "⏳ <b>LATCHI DZ BOT</b>\n"
+        "🔄 جارٍ الاتصال بمنصة Quotex...\n"
+        "يرجى الانتظار..."
+    )
+
+    client = Quotex(email=EMAIL, password="", lang="en")
     client.set_account_mode("PRACTICE")
+
+    _load_session(client)
 
     connected, reason = await client.connect()
     if not connected:
-        state.status  = f"فشل الاتصال: {reason}"
+        state.status = f"فشل الاتصال: {reason}"
         state.running = False
-        send_telegram(f"❌ فشل اتصال البوت: {reason}")
+        send_telegram(
+            f"❌ <b>فشل الاتصال بمنصة Quotex</b>\n"
+            f"السبب: {reason}\n"
+            f"يرجى تجديد الـ cookies"
+        )
         return
 
     await client.change_account("PRACTICE")
-    balance       = await client.get_balance()
+    balance = await client.get_balance()
     state.balance = float(balance)
     state.status  = "يعمل الآن"
 
     send_telegram(
+        f"✅ <b>تم الاتصال بمنصة Quotex بنجاح!</b>\n\n"
         f"🚀 <b>LATCHI DZ BOT</b> بدأ التشغيل\n"
         f"💰 الرصيد التجريبي: <b>${state.balance:.2f}</b>\n"
-        f"📊 وضع: تجريبي (PRACTICE)"
+        f"📊 الوضع: تجريبي (PRACTICE)\n\n"
+        f"📡 سيبدأ إرسال الإشارات الآن..."
     )
 
     while state.running:
         try:
             asset     = random.choice(ASSETS)
             direction = await decide_direction(client, asset)
-            now       = datetime.now()
+            now         = datetime.now()
             signal_time = now.strftime("%H:%M")
 
             next_minute = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
@@ -190,8 +231,8 @@ async def bot_loop():
             signal["result"] = result_status
             signal["profit"] = round(float(profit), 2) if profit else 0
 
-            new_balance   = await client.get_balance()
-            state.balance = float(new_balance)
+            new_balance    = await client.get_balance()
+            state.balance  = float(new_balance)
 
             if result_status == "win":
                 state.wins += 1
