@@ -1,5 +1,6 @@
 flask
 flask-cors
 requests
+telethon
 git+https://github.com/cleitonleonel/pyquotex.git
 gunicorn
